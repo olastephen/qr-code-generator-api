@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+qrcode
+opencv-python
+pyzbar
+Pillow
+segno 
