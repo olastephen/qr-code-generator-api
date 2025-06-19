@@ -14,6 +14,9 @@ from PIL import Image
 import segno
 import logging
 import sys
+import os
+import platform
+import datetime
 
 # Configure logging
 logging.basicConfig(
@@ -26,20 +29,82 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
+app = FastAPI(title="QR Code Generator API",
+             description="API for generating QR codes with various options",
+             version="1.0.0")
 
 @app.on_event("startup")
 async def startup_event():
+    """Log important information on startup"""
     logger.info("Starting up QR Code Generator API")
-    # Log all imported dependencies versions
-    logger.info(f"FastAPI version: {fastapi.__version__}")
-    logger.info(f"Pillow version: {Image.__version__}")
-    logger.info(f"QRCode version: {qrcode.__version__}")
-    logger.info(f"Segno version: {segno.__version__}")
+    
+    # Log system information
+    logger.info(f"Python version: {sys.version}")
+    logger.info(f"Platform: {platform.platform()}")
+    logger.info(f"Working directory: {os.getcwd()}")
+    
+    # Log environment variables (excluding sensitive ones)
+    logger.info("Environment variables:")
+    for key, value in os.environ.items():
+        if not any(sensitive in key.lower() for sensitive in ['key', 'secret', 'token', 'password']):
+            logger.info(f"{key}: {value}")
+    
+    # Log dependency versions
+    try:
+        import fastapi
+        logger.info(f"FastAPI version: {fastapi.__version__}")
+    except Exception as e:
+        logger.error(f"Error getting FastAPI version: {e}")
+    
+    try:
+        logger.info(f"Pillow version: {Image.__version__}")
+    except Exception as e:
+        logger.error(f"Error getting Pillow version: {e}")
+    
+    try:
+        logger.info(f"QRCode version: {qrcode.__version__}")
+    except Exception as e:
+        logger.error(f"Error getting QRCode version: {e}")
+    
+    try:
+        logger.info(f"Segno version: {segno.__version__}")
+    except Exception as e:
+        logger.error(f"Error getting Segno version: {e}")
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    """Health check endpoint with detailed status"""
+    try:
+        # Test QR code generation
+        qr = qrcode.QRCode()
+        qr.add_data("test")
+        qr.make()
+        
+        return {
+            "status": "healthy",
+            "timestamp": datetime.datetime.now().isoformat(),
+            "python_version": sys.version,
+            "platform": platform.platform(),
+            "dependencies": {
+                "fastapi": fastapi.__version__,
+                "pillow": Image.__version__,
+                "qrcode": qrcode.__version__,
+                "segno": segno.__version__
+            }
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Global exception handler to log all errors"""
+    logger.error(f"Global exception handler caught: {exc}")
+    logger.error(f"Request path: {request.url.path}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)}
+    )
 
 SUPPORTED_FORMATS = {"png", "svg", "jpeg"}
 
