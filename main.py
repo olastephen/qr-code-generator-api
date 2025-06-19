@@ -16,22 +16,46 @@ import logging
 import sys
 import os
 import platform
+from pathlib import Path
 import datetime
+from fastapi.middleware.cors import CORSMiddleware
 
-# Configure logging
+# Determine data directory from environment or use fallback
+data_dir = Path(os.getenv('APP_LOG_DIR', '/tmp/logs'))
+try:
+    data_dir.mkdir(parents=True, exist_ok=True)
+except Exception as e:
+    logging.warning(f"Could not create {data_dir}, falling back to /tmp/logs: {e}")
+    data_dir = Path('/tmp/logs')
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+# Configure logging to both file and stdout
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.StreamHandler(sys.stdout)
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler(data_dir / "app.log", mode='a')
     ]
 )
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="QR Code Generator API",
-             description="API for generating QR codes with various options",
-             version="1.0.0")
+# Create FastAPI app with CORS enabled
+app = FastAPI(
+    title="QR Code Generator API",
+    description="API for generating QR codes with various options",
+    version="1.0.0"
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.on_event("startup")
 async def startup_event():
@@ -42,12 +66,17 @@ async def startup_event():
     logger.info(f"Python version: {sys.version}")
     logger.info(f"Platform: {platform.platform()}")
     logger.info(f"Working directory: {os.getcwd()}")
+    logger.info(f"Data directory: {data_dir}")
     
-    # Log environment variables (excluding sensitive ones)
-    logger.info("Environment variables:")
-    for key, value in os.environ.items():
-        if not any(sensitive in key.lower() for sensitive in ['key', 'secret', 'token', 'password']):
-            logger.info(f"{key}: {value}")
+    # Test write permissions
+    try:
+        test_file = data_dir / "test.txt"
+        test_file.write_text("test")
+        test_file.unlink()
+        logger.info("Successfully verified write permissions to data directory")
+    except Exception as e:
+        logger.error(f"Failed to write to data directory: {e}")
+        logger.info("Application will continue but some features may be limited")
     
     # Log dependency versions
     try:
@@ -71,6 +100,17 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Error getting Segno version: {e}")
 
+@app.get("/")
+async def root():
+    """Root endpoint that returns API status"""
+    return {
+        "status": "online",
+        "message": "QR Code Generator API is running",
+        "docs_url": "/docs",
+        "health_check": "/health",
+        "data_dir": str(data_dir)
+    }
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint with detailed status"""
@@ -80,11 +120,26 @@ async def health_check():
         qr.add_data("test")
         qr.make()
         
+        # Test file system
+        test_file = data_dir / "test_health.txt"
+        try:
+            test_file.write_text("test")
+            test_file.unlink()
+            fs_status = "writable"
+        except Exception as e:
+            fs_status = f"not writable: {str(e)}"
+        
         return {
             "status": "healthy",
             "timestamp": datetime.datetime.now().isoformat(),
             "python_version": sys.version,
             "platform": platform.platform(),
+            "filesystem": {
+                "data_dir": str(data_dir),
+                "data_dir_exists": data_dir.exists(),
+                "data_dir_writable": os.access(data_dir, os.W_OK),
+                "write_test": fs_status
+            },
             "dependencies": {
                 "fastapi": fastapi.__version__,
                 "pillow": Image.__version__,
