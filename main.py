@@ -12,8 +12,34 @@ from fastapi import status
 import zipfile
 from PIL import Image
 import segno
+import logging
+import sys
+
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
+
+@app.on_event("startup")
+async def startup_event():
+    logger.info("Starting up QR Code Generator API")
+    # Log all imported dependencies versions
+    logger.info(f"FastAPI version: {fastapi.__version__}")
+    logger.info(f"Pillow version: {Image.__version__}")
+    logger.info(f"QRCode version: {qrcode.__version__}")
+    logger.info(f"Segno version: {segno.__version__}")
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
 
 SUPPORTED_FORMATS = {"png", "svg", "jpeg"}
 
