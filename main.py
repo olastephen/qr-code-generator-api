@@ -20,22 +20,17 @@ from pathlib import Path
 import datetime
 from fastapi.middleware.cors import CORSMiddleware
 
-# Determine data directory from environment or use fallback
-data_dir = Path(os.getenv('APP_LOG_DIR', '/tmp/logs'))
-try:
-    data_dir.mkdir(parents=True, exist_ok=True)
-except Exception as e:
-    logging.warning(f"Could not create {data_dir}, falling back to /tmp/logs: {e}")
-    data_dir = Path('/tmp/logs')
-    data_dir.mkdir(parents=True, exist_ok=True)
+# Define the data directory
+data_dir = Path("/data")
+log_dir = data_dir / "logs"
 
-# Configure logging to both file and stdout
+# Configure logging
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler(data_dir / "app.log", mode='a')
+        logging.FileHandler(log_dir / "app.log", mode='a')
     ]
 )
 
@@ -61,44 +56,16 @@ app.add_middleware(
 async def startup_event():
     """Log important information on startup"""
     logger.info("Starting up QR Code Generator API")
-    
-    # Log system information
     logger.info(f"Python version: {sys.version}")
-    logger.info(f"Platform: {platform.platform()}")
-    logger.info(f"Working directory: {os.getcwd()}")
     logger.info(f"Data directory: {data_dir}")
-    
     # Test write permissions
     try:
-        test_file = data_dir / "test.txt"
+        test_file = log_dir / "test.txt"
         test_file.write_text("test")
         test_file.unlink()
-        logger.info("Successfully verified write permissions to data directory")
+        logger.info("Successfully verified write permissions to log directory")
     except Exception as e:
-        logger.error(f"Failed to write to data directory: {e}")
-        logger.info("Application will continue but some features may be limited")
-    
-    # Log dependency versions
-    try:
-        import fastapi
-        logger.info(f"FastAPI version: {fastapi.__version__}")
-    except Exception as e:
-        logger.error(f"Error getting FastAPI version: {e}")
-    
-    try:
-        logger.info(f"Pillow version: {Image.__version__}")
-    except Exception as e:
-        logger.error(f"Error getting Pillow version: {e}")
-    
-    try:
-        logger.info(f"QRCode version: {qrcode.__version__}")
-    except Exception as e:
-        logger.error(f"Error getting QRCode version: {e}")
-    
-    try:
-        logger.info(f"Segno version: {segno.__version__}")
-    except Exception as e:
-        logger.error(f"Error getting Segno version: {e}")
+        logger.error(f"Failed to write to log directory: {e}")
 
 @app.get("/")
 async def root():
@@ -107,49 +74,12 @@ async def root():
         "status": "online",
         "message": "QR Code Generator API is running",
         "docs_url": "/docs",
-        "health_check": "/health",
-        "data_dir": str(data_dir)
     }
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint with detailed status"""
-    try:
-        # Test QR code generation
-        qr = qrcode.QRCode()
-        qr.add_data("test")
-        qr.make()
-        
-        # Test file system
-        test_file = data_dir / "test_health.txt"
-        try:
-            test_file.write_text("test")
-            test_file.unlink()
-            fs_status = "writable"
-        except Exception as e:
-            fs_status = f"not writable: {str(e)}"
-        
-        return {
-            "status": "healthy",
-            "timestamp": datetime.datetime.now().isoformat(),
-            "python_version": sys.version,
-            "platform": platform.platform(),
-            "filesystem": {
-                "data_dir": str(data_dir),
-                "data_dir_exists": data_dir.exists(),
-                "data_dir_writable": os.access(data_dir, os.W_OK),
-                "write_test": fs_status
-            },
-            "dependencies": {
-                "fastapi": fastapi.__version__,
-                "pillow": Image.__version__,
-                "qrcode": qrcode.__version__,
-                "segno": segno.__version__
-            }
-        }
-    except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return {"status": "healthy"}
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
