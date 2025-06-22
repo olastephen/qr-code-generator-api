@@ -117,6 +117,15 @@ EXT_MAP = {"png": ".png", "svg": ".svg", "jpeg": ".jpg"}
 class BatchQRRequest(BaseModel):
     items: List[QRRequest]
 
+class ArtisticQRRequest(BaseModel):
+    data: str
+    dark: Optional[str] = "#000"
+    light: Optional[str] = "#fff"
+    border: Optional[int] = 4
+    scale: Optional[int] = 10
+    error_correction: Optional[str] = "L"
+    format: Optional[str] = "png"
+
 @app.exception_handler(HTTPException)
 def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
@@ -331,30 +340,22 @@ def generate_qr_with_logo(
     return Response(content=content, media_type=media_type, headers=headers)
 
 @app.post("/generate_artistic")
-def generate_artistic_qr(
-    data: str = Form(...),
-    dark: str = Form("#000"),
-    light: str = Form("#fff"),
-    border: int = Form(4),
-    scale: int = Form(10),
-    error_correction: str = Form("L"),
-    format: str = Form("png")
-):
-    fmt = format.lower()
-    if not data:
+def generate_artistic_qr(req: ArtisticQRRequest):
+    fmt = req.format.lower()
+    if not req.data:
         raise HTTPException(status_code=400, detail="'data' field must not be empty.")
     if fmt not in ["png", "svg"]:
         raise HTTPException(status_code=400, detail="Only PNG and SVG formats are supported for artistic QR codes.")
     try:
-        qr = segno.make(data, error=error_correction.upper())
+        qr = segno.make(req.data, error=req.error_correction.upper())
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to generate QR code: {str(e)}")
     buf = io.BytesIO()
     if fmt == "svg":
-        qr.save(buf, kind="svg", scale=scale, border=border, dark=dark, light=light)
+        qr.save(buf, kind="svg", scale=req.scale, border=req.border, dark=req.dark, light=req.light)
         media_type = "image/svg+xml"
     else:
-        qr.save(buf, kind="png", scale=scale, border=border, dark=dark, light=light)
+        qr.save(buf, kind="png", scale=req.scale, border=req.border, dark=req.dark, light=req.light)
         media_type = "image/png"
     buf.seek(0)
     return Response(content=buf.read(), media_type=media_type)
